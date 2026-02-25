@@ -187,8 +187,8 @@
             position: relative;
         }
 
-        /* Beat markers (every 4 steps) */
-        .step:nth-child(4n) { margin-right: 4px; }
+        /* Beat markers (slightly highlight the first step of each beat) */
+        .step:not(.active):nth-child(4n+1) { background-color: #323240; }
 
         /* Active/Playing States */
         .step.active { opacity: 0.8; }
