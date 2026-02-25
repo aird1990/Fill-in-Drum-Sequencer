@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fill-in Drum Sequencer (BPM Control)</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --panel-color: #1e1e24;
+            --accent: #00ff9d;
+            --text-main: #eee;
+            --text-dim: #888;
+            --step-off: #2a2a35;
+            --step-on: #00ff9d;
+            --step-play: #fff;
+            --k-color: #ff0055;
+            --s-color: #00ccff;
+            --h-color: #ffaa00;
+            --p-color: #bd00ff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            user-select: none;
+        }
+
+        .container {
+            background-color: var(--panel-color);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            width: 95%;
+            max-width: 900px;
+            border: 1px solid #333;
+        }
+
+        /* Header & Controls */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #111;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+
+        select {
+            background: #111;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            min-width: 120px;
+        }
+
+        /* Added style for BPM Input */
+        input[type=number] {
+            background: #222;
+            color: var(--accent);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px;
+            width: 60px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #444; }
+
+        button#playBtn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            width: 80px;
+        }
+        button#playBtn.playing { background: #ff4444; color: #fff; }
+
+        button#midiBtn {
+            background: #bd00ff;
+            border: none;
+        }
+
+        button#settingsBtn {
+            background: #444;
+            border: none;
+            font-size: 1.1rem;
+            padding: 5px 10px;
+        }
+
+        /* Volume Slider */
+        input[type=range] {
+            width: 80px;
+            height: 4px;
+            background: #444;
+            border-radius: 2px;
+            -webkit-appearance: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* Sequencer Grid */
+        .sequencer-grid {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .track {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .track-label {
+            width: 60px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 10px;
+            color: var(--text-dim);
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 4px;
+            flex-grow: 1;
+            min-width: 300px; /* For mobile scroll */
+        }
+
+        .step {
+            aspect-ratio: 1;
+            background-color: var(--step-off);
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        /* Beat markers (every 4 steps) */
+        .step:nth-child(4n) { margin-right: 4px; }
+
+        /* Active/Playing States */
+        .step.active { opacity: 0.8; }
+        .step.playing { border: 1px solid #fff; z-index: 10; transform: scale(1.1); box-shadow: 0 0 5px #fff; }
+        
+        /* Instrument Colors */
+        .track[data-inst="kick"] .step.active { background-color: var(--k-color); box-shadow: 0 0 5px var(--k-color); }
+        .track[data-inst="snare"] .step.active { background-color: var(--s-color); box-shadow: 0 0 5px var(--s-color); }
+        .track[data-inst="hat"] .step.active { background-color: var(--h-color); box-shadow: 0 0 5px var(--h-color); }
+        .track[data-inst="perc"] .step.active { background-color: var(--p-color); box-shadow: 0 0 5px var(--p-color); }
+
+        /* Modal Styles */
+        .modal {
+            display: none; 
+            position: fixed; z-index: 100; left: 0; top: 0;
+            width: 100%; height: 100%; overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(3px);
+        }
+        .modal-content {
+            background-color: var(--panel-color);
+            margin: 10% auto; padding: 25px;
+            border: 1px solid #444; border-radius: 8px;
+            width: 320px; color: var(--text-main);
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.2);
+        }
+        .modal-content h2 {
+            margin-top: 0; font-size: 1.2rem; margin-bottom: 20px; text-transform: uppercase;
+        }
+        .setting-row {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+            background: #1a1a1a; padding: 8px 12px; border-radius: 4px;
+        }
+        .setting-row label {
+            font-weight: bold; color: var(--text-dim);
+        }
+        .setting-row input {
+            width: 70px; background: #222; color: var(--accent);
+            border: 1px solid #444; border-radius: 4px; padding: 6px; text-align: center;
+            font-family: monospace; font-weight: bold; font-size: 1rem;
+        }
+        .modal-close-btn {
+            width: 100%; margin-top: 15px; background: #444; padding: 10px;
+        }
+
+        .description {
+            font-size: 0.85rem;
+            color: #aaa;
+            background: #252530;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid var(--accent);
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        @media (max-width: 700px) {
+            header { flex-direction: column; align-items: stretch; }
+            .controls { justify-content: center; }
+            .track-label { width: 40px; font-size: 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Fill-in Drum Sequencer</h1>
+        <div class="controls">
+            <select id="genreSelect"></select>
+            <select id="patternSelect"></select>
+            
+            <div class="control-group">
+                <span style="font-size:0.8rem; color:#888;">VOL</span>
+                <input type="range" id="volSlider" min="0" max="1" step="0.05" value="0.8">
+            </div>
+
+            <div class="control-group">
+                <span style="font-size:0.8rem; color:#888;">BPM</span>
+                <input type="number" id="bpmInput" min="40" max="300" value="120">
+            </div>
+
+            <button id="playBtn">PLAY</button>
+            <button id="midiBtn" title="Download MIDI File">MIDI DL</button>
+            <button id="settingsBtn" title="MIDI Settings">⚙️</button>
+        </div>
+    </header>
+
+    <div class="sequencer-grid">
+        <div class="track" data-inst="hat"><div class="track-label">HiHat</div><div class="steps" id="row-hat"></div></div>
+        <div class="track" data-inst="perc"><div class="track-label">FX/Bass</div><div class="steps" id="row-perc"></div></div>
+        <div class="track" data-inst="snare"><div class="track-label">Snare</div><div class="steps" id="row-snare"></div></div>
+        <div class="track" data-inst="kick"><div class="track-label">Kick</div><div class="steps" id="row-kick"></div></div>
+    </div>
+
+    <div class="description" id="descBox">
+        Select a genre and pattern. (Total 240+ patterns available)
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal">
+  <div class="modal-content">
+    <h2>MIDI Note Mapping</h2>
+    <p style="font-size: 0.8rem; color: #888; margin-bottom: 15px;">Standard: C4 = 60</p>
+    <div class="setting-row">
+      <label>Kick</label>
+      <input type="text" id="map-k" title="e.g. C2, D#2">
+    </div>
+    <div class="setting-row">
+      <label>Snare</label>
+      <input type="text" id="map-s" title="e.g. D2">
+    </div>
+    <div class="setting-row">
+      <label>HiHat</label>
+      <input type="text" id="map-h" title="e.g. F#2">
+    </div>
+    <div class="setting-row">
+      <label>FX/Bass</label>
+      <input type="text" id="map-p" title="e.g. C4">
+    </div>
+    <button id="closeSettingsBtn" class="modal-close-btn">Close</button>
+  </div>
+</div>
+
+<script>
+/* DATA STRUCTURE: 240+ PATTERNS
+  k=Kick, s=Snare, h=Hat, p=Perc/FX
+  x=Hit, .=Rest, r=Roll(Double)
+*/
+const DATA = {
+    "DnB": {
+        bpm: 174, kit: "break",
+        patterns: [
+            { name: "Amen Chop 1", desc: "Basic Amen break re-arrangement.", k: "x.x......x..x...", s: "....x..x.x.x...x", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 2", desc: "Syncopated variation.", k: "x...x...x..x....", s: "..x...x...x.x.x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 3", desc: "Double snare hit variation.", k: "x.x......x......", s: "....x..x.x.xx..x", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 4", desc: "Ghost note heavy shuffle.", k: "x..x....x..x....", s: ".x.x.x.x.x.x.x.x", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 5", desc: "Kick focus driving beat.", k: "xx.x.xx.x.x.x...", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 6", desc: "Drill style fast rolls.", k: "x.......x.......", s: "....x..r.r..x..r", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 7", desc: "Jungle vibe syncopation.", k: "x...x..x..x.....", s: "..x...x..x...x..", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Amen Chop 8", desc: "Pause and drop fill.", k: "x.x.x...........", s: "......x...x.xxxx", h: "x.x.x...........", p: "................" },
+            { name: "Amen Chop 9", desc: "Chaotic detailed chop.", k: "x.x..x.x..x.x...", s: ".x.xx.x.xx.x.xx.", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Amen Chop 10", desc: "Minimal techy chop.", k: "x.......x.......", s: "....x.......x.x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Snare Rush", desc: "Pitch rising snare build-up.", k: "x...............", s: "x.x.xxxxxxxxxxxx", h: "................", p: "................" },
+            { name: "Machine Gun", desc: "Rapid fire snare rolls.", k: "x...............", s: "..rrrr..rrrrxxxx", h: "x...x...x...x...", p: "................" },
+            { name: "Half-time Switch", desc: "Slowing to Dubstep feel.", k: "x.......x.......", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Ghost Note Flow", desc: "Complex ghost notes.", k: "x..x....x..x....", s: ".x..x.x..x..x.x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Step 2 Step", desc: "Techstep minimalist.", k: "x...x...x...x...", s: ".......x.......x", h: "x.x.x.x.x.x.x.x.", p: "...x.......x...." },
+            { name: "Rimshot Flurry", desc: "Fast rimshots.", k: "x.......x.......", s: "..x.xx.x..x.xx.x", h: "................", p: "................" },
+            { name: "Classic Roll", desc: "Standard roll ending.", k: "x...x...x...x...", s: "....x...xxxxxxxx", h: "x.x.x.x.........", p: "................" },
+            { name: "Double Kick", desc: "Heavy kick syncopation.", k: "xx..xx..xx..xx..", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Liquid Flow", desc: "Smooth rolling hats.", k: "x.........x.....", s: "....x.......x...", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Jump Up Bounce", desc: "Swingy simple beat.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "x...x...x...x..." },
+            { name: "Intelligent DnB", desc: "Atmospheric fill.", k: "x.......x.......", s: "..x..x.....x..x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Sambass", desc: "Brazilian percussion.", k: "x..x..x..x..x...", s: "................", h: "x.x.x.x.x.x.x.x.", p: "..x..x..x..x..x." },
+            { name: "Darkside", desc: "Eerie sparse hits.", k: "x...............", s: "........x.......", h: "....x.......x...", p: "..x...x...x...x." },
+            { name: "Breakcore Chaos", desc: "Randomized glitch.", k: "x.x.x.x.x.x.x.x.", s: "x.xx.xx.x.xx.xx.", h: "x...............", p: "................" },
+            { name: "Roll to Drop", desc: "Increasing intensity.", k: "x...x...x...x...", s: "x.x.x.x.xxxxxxxx", h: "................", p: "................" },
+            { name: "Filter Sweep", desc: "Simulated sweep.", k: "x...x...x...x...", s: "................", h: "x.x.x.x.x.x.x.x.", p: "xxxxxxxxxxxxxxxx" },
+            { name: "No Snare", desc: "Tension without snare.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Tom Descent", desc: "High to low toms.", k: "x...x...x...x...", s: "................", h: "................", p: "xxxx.xxxx.xxxx.." },
+            { name: "Ride Cymbal", desc: "Jazz influence.", k: "x.........x.....", s: "....x.......x...", h: "x..x.x..x..x.x..", p: "................" },
+            { name: "Offbeat Skank", desc: "Reggae influence.", k: "................", s: "..x...x...x...x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Double Time", desc: "Feels twice as fast.", k: "x.x.x.x.x.x.x.x.", s: ".x.x.x.x.x.x.x.x", h: "................", p: "................" },
+            { name: "Minimal Roll", desc: "Quiet snare roll.", k: "x...............", s: "................", h: "................", p: "rrrrrrrrrrrrrrrr" },
+            { name: "Vocoder Rhythm", desc: "Robotic rhythm.", k: "x..x..x..x..x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." }
+        ]
+    },
+    "Techno": {
+        bpm: 130, kit: "909",
+        patterns: [
+            { name: "909 Snare Roll", desc: "Classic build-up.", k: "x...x...x.......", s: "............xxxx", h: "..x...x...x...x.", p: "................" },
+            { name: "Rumble Removal", desc: "Remove low end.", k: "................", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Clap Torrent", desc: "Heavy claps.", k: "x...x...x.......", s: "....x.......x.x.", h: "..x...x...x.....", p: "............x..." },
+            { name: "Industrial", desc: "Chaotic metal hits.", k: "x...x...x...x...", s: "................", h: "x...x...x...x...", p: "x.x.x.xx.x.x.xx." },
+            { name: "Off-beat Hat", desc: "Open hats focus.", k: "x...x...x.......", s: "....x.......x...", h: "..x...x...x.xxxx", p: "................" },
+            { name: "Kick Filter", desc: "Kick dropping out.", k: "x.x.x.x.........", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Polyrhythm Ride", desc: "3-over-4 feel.", k: "x...x...x...x...", s: "....x.......x...", h: "x..x..x..x..x...", p: "................" },
+            { name: "Tom Rumble", desc: "Low tom rolling.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "xxxxxxxxxxxxxxxx" },
+            { name: "Broken Beat", desc: "Syncopated kick.", k: "x..x..x.x..x....", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Acid 303 Fill", desc: "Resonant synth rhythm.", k: "x...x...x...x...", s: "................", h: "..x...x...x...x.", p: "x.xx.x.xx.x.xxxx" },
+            { name: "Detroit Strings", desc: "High pitched rhythm.", k: "x...x...x...x...", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "x...x...x...x..." },
+            { name: "Hard Techno", desc: "Distorted relentless.", k: "xxxx.xxxx.xxxx..", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Minimal Click", desc: "Tiny percussion.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "White Noise", desc: "Hissing sweep.", k: "x...............", s: "................", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Stutter Kick", desc: "Kick repeating.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "................", p: "................" },
+            { name: "Peak Time", desc: "Maximum energy.", k: "x...x...x...x...", s: "x.x.x.x.x.x.x.x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Groove Switch", desc: "Changing swing.", k: "x..x.x..x..x.x..", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Percussion Loop", desc: "Tribal feel.", k: "x...x...x...x...", s: "................", h: "................", p: "x.xx.xx.xx.xx.x." },
+            { name: "Reverse Clap", desc: "Sucking clap.", k: "x...x...x...x...", s: "....x.......xxxx", h: "................", p: "................" },
+            { name: "Bleep Test", desc: "Sonar sounds.", k: "x...x...x...x...", s: "................", h: "................", p: "x.......x......." },
+            { name: "Shaker Run", desc: "Fast shaker.", k: "x...x...x...x...", s: "....x.......x...", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Double Clap", desc: "Reinforced claps.", k: "x...x...x...x...", s: "....x.x.....x.x.", h: "..x...x...x...x.", p: "................" },
+            { name: "End Bar", desc: "Simple reset.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "............xxxx" }
+        ]
+    },
+    "Dubstep": {
+        bpm: 140, kit: "heavy",
+        patterns: [
+            { name: "Kick Build-up", desc: "Accelerating kick.", k: "x...x...x.x.xxxx", s: "................", h: "................", p: "................" },
+            { name: "Metallic Snare", desc: "Pitch down snare.", k: "x.......x.......", s: "....x.......x...", h: "................", p: "............x..." },
+            { name: "Fake Drop", desc: "Misleading rhythm.", k: "x.x...x.........", s: "......x.........", h: "x...x...........", p: "................" },
+            { name: "Triplet Flow", desc: "Heavy triplet feel.", k: "x..x..x..x..x...", s: "...x.....x......", h: "................", p: "................" },
+            { name: "Laser Zap", desc: "Synth zap FX.", k: "x...............", s: "................", h: "................", p: "x..x..x..x..x..." },
+            { name: "Heavy Crash", desc: "Riding the crash.", k: "x...x...x...x...", s: "....x.......x...", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Wub Growl", desc: "Bass growl rhythm.", k: "x...............", s: "....x.......x...", h: "................", p: ".xx..xx..xx..xx." },
+            { name: "Pre-drop Vocal", desc: "Space for vocal.", k: "x...x...x.......", s: "....x...........", h: "................", p: "................" },
+            { name: "Machine Gun Kick", desc: "Double kick pedal.", k: "xxxx....xxxx....", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Half Step Stomp", desc: "Slow heavy beat.", k: "x.......x.......", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Riddim Bounce", desc: "Minimal swing.", k: "x.....x.x.....x.", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Snare Roll Up", desc: "Increasing velocity.", k: "................", s: "x.x.x.x.x.x.x.x.", h: "................", p: "................" },
+            { name: "Kick Rush", desc: "Fast kicks.", k: "xxxxxxxxxxxxxxxx", s: "................", h: "................", p: "................" },
+            { name: "Yoily Bass", desc: "Talking bass rhythm.", k: "x...x...x...x...", s: "................", h: "................", p: ".x.x.x.x.x.x.x.x" },
+            { name: "Drumstep Speed", desc: "Doubletime feel.", k: "x...x...x...x...", s: "..x...x...x...x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Glitch Fill", desc: "Random stutter.", k: "x..x..x.........", s: ".......x.x.x....", h: "............x.x.", p: "................" },
+            { name: "Tom Batter", desc: "Heavy tom assault.", k: "x...x...x...x...", s: "................", h: "................", p: "xxxx.xxxx.xxxx.." },
+            { name: "High Pass Filter", desc: "Thin sound.", k: "................", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Syncopated Snare", desc: "Off-grid snare.", k: "x...............", s: "..x..x..x..x..x.", h: "................", p: "................" },
+            { name: "Brostep Build", desc: "Classic buildup.", k: "x.x.x.x.x.x.x.x.", s: "x.x.x.x.x.x.x.x.", h: "................", p: "................" },
+            { name: "Reggae Skank", desc: "Upbeat chop.", k: "................", s: "..x...x...x...x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Siren Rise", desc: "Rising pitch FX.", k: "x...............", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Kick Ghosting", desc: "Subtle kicks.", k: "x.xx.xx.x.xx.xx.", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Melodic Arp", desc: "Synth melody.", k: "x...............", s: "................", h: "................", p: "x.xx.xx.xx.xx.x." },
+            { name: "Chaos Bar", desc: "Everything at once.", k: "x.x.x.x.x.x.x.x.", s: "x.x.x.x.x.x.x.x.", h: "x.x.x.x.x.x.x.x.", p: "x.x.x.x.x.x.x.x." },
+        ]
+    },
+    "Future Bass": {
+        bpm: 150, kit: "urban",
+        patterns: [
+            { name: "Trap Snare Roll", desc: "Fast rolls.", k: "x.........x.....", s: "....x..x....rrrr", h: "x.x.x.x.x.x.....", p: "................" },
+            { name: "Harp Arp", desc: "Melodic fill.", k: "x...............", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Kick-Snare Linear", desc: "Linear drumming.", k: "x...x.....x.....", s: "..x...x.x...x...", h: "................", p: "................" },
+            { name: "Super Chords", desc: "Chord stabs.", k: "x..x..x..x..x...", s: "................", h: "................", p: "x..x..x..x..x..." },
+            { name: "Vocal Chops", desc: "Chopped vocal.", k: "x.......x.......", s: "....x.......x...", h: "................", p: "x.xx.x.xx.xx.x.x" },
+            { name: "Coin FX", desc: "Game SFX.", k: "x...............", s: "................", h: "................", p: "....x...x...x..." },
+            { name: "Silence+Breath", desc: "Stop for breath.", k: "x...x...........", s: "....x...........", h: "x.x.x...........", p: "............x..." },
+            { name: "Reverse Suck", desc: "Reverse cymbal.", k: "x...x...x.......", s: "....x.......x...", h: "............xxxx", p: "................" },
+            { name: "Kawaii Perc", desc: "Cute percussion.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "x.x.x...x.x.x..." },
+            { name: "Bed Squeak", desc: "Sample rhythm.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Tom Fill", desc: "Acoustic tom feel.", k: "x...x...x...x...", s: "................", h: "................", p: "xx.xx.xx.xx.xx.." },
+            { name: "Orchestra Hit", desc: "Dramatic stab.", k: "x...............", s: "................", h: "................", p: "x...x...x...x..." },
+            { name: "Fast Hat", desc: "32nd note hats.", k: "x.......x.......", s: "....x.......x...", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Kick 4x4", desc: "Four on floor.", k: "x...x...x...x...", s: "................", h: "................", p: "................" },
+            { name: "LFO Wobble", desc: "Synth wobble.", k: "x...............", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Video Game Jump", desc: "Rising tone.", k: "x...............", s: "................", h: "................", p: "x.x.x.x........." },
+            { name: "Telephone Ring", desc: "Rhythmic ring.", k: "................", s: "................", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Glass Break", desc: "Crash texture.", k: "x...............", s: "................", h: "xxxx............", p: "................" },
+            { name: "Anime Shout", desc: "Vocal space.", k: "x...x...........", s: "................", h: "................", p: "............x..." },
+            { name: "Bubble Pop", desc: "Pop FX.", k: "x...x...x...x...", s: "................", h: "................", p: ".x..x..x..x..x.." },
+            { name: "Glitch Hop", desc: "Swing rhythm.", k: "x..x.x..x.......", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Saturated Kick", desc: "Distorted bass.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "................", p: "................" },
+            { name: "Chime Run", desc: "Wind chimes.", k: "x...............", s: "................", h: "xxxxxxxxxxxxxxxx", p: "................" }
+        ]
+    },
+    "House": {
+        bpm: 124, kit: "909",
+        patterns: [
+            { name: "Clap Build-up", desc: "Increasing claps.", k: "x...x...x...x...", s: "....x.x.x.x.xxxx", h: "..x...x...x...x.", p: "................" },
+            { name: "Piano Chord Build", desc: "Rhythmic piano.", k: "x...x...x...x...", s: "................", h: "x.x.x.x.xxxxxx..", p: "..x...x...x...x." },
+            { name: "Crash on 4", desc: "End crash.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x.....", p: "............x..." },
+            { name: "Disco Tom Roll", desc: "Retro tom fill.", k: "x...x...x...x...", s: "................", h: "..x...x...x...x.", p: "..xxxx..xxxxxxxx" },
+            { name: "Filtered Noise", desc: "White noise riser.", k: "x...............", s: "................", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Kick Removal", desc: "No kick.", k: "................", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Reverse Reverb", desc: "Sucking sound.", k: "x...x...x.......", s: "....x.......x...", h: "................", p: "............xxxx" },
+            { name: "Sax Blast", desc: "Brass rhythm.", k: "x...x...x...x...", s: "................", h: "................", p: "x..x..x..x......" },
+            { name: "Phaser Sweep", desc: "Sweeping effect.", k: "x.x.x.x.x.x.x.x.", s: "x.x.x.x.x.x.x.x.", h: "................", p: "................" },
+            { name: "Conga Groove", desc: "Percussive Latin.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "x.xx.x.xx.xx.x.x" },
+            { name: "French Filter", desc: "Filter disco.", k: "x...x...x...x...", s: "................", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Jackin' Groove", desc: "Swingy beat.", k: "x..x.x..x..x.x..", s: "....x.......x...", h: "..x...x...x...x.", p: "................" },
+            { name: "Vocal Loop", desc: "Repetitive vocal.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Acid Line", desc: "303 variation.", k: "x...x...x...x...", s: "................", h: "..x...x...x...x.", p: ".x..x..x..x..x.." },
+            { name: "Deep Chord", desc: "Dubby chords.", k: "x.......x.......", s: "....x.......x...", h: "..x...x...x...x.", p: "x.......x......." },
+            { name: "Tech House Roll", desc: "Tight snare roll.", k: "x...x...x...x...", s: "............xxxx", h: "................", p: "................" },
+            { name: "Bongo Man", desc: "Bongo solo.", k: "x...x...x...x...", s: "................", h: "................", p: "x.xx.x.xx.xx.xx." },
+            { name: "Shaker Lift", desc: "Fast shaker.", k: "x...x...x...x...", s: "....x.......x...", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Offbeat Open", desc: "Open hat pattern.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "................" },
+            { name: "Bass Pluck", desc: "Bass guitar fill.", k: "x...x...x...x...", s: "................", h: "................", p: "..x...x...x....." },
+            { name: "Siren FX", desc: "Dub siren.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x........." },
+            { name: "Double Kick", desc: "Driving beat.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "..x...x...x...x.", p: "................" },
+            { name: "Funky Guitar", desc: "Guitar scratch.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: ".x.x.x.x.x.x.x.x" },
+            { name: "Organ Stab", desc: "M1 organ feel.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "x..x..x..x..x..." },
+            { name: "Cowbell Rhythm", desc: "Classic 808 cowbell.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "x.x...x.x.x...x." },
+            { name: "Rimshot Sync", desc: "Syncopated rim.", k: "x...x...x...x...", s: "..x..x.....x..x.", h: "................", p: "................" },
+            { name: "Pre-Drop Stop", desc: "Total silence.", k: "x...x...........", s: "....x...........", h: "..x.............", p: "................" },
+            { name: "Ghost Snare", desc: "Subtle groove.", k: "x...x...x...x...", s: ".x.x.x.x.x.x.x.x", h: "................", p: "................" },
+            { name: "Filter Up", desc: "Brightening.", k: "x...x...x...x...", s: "x...x...x...x...", h: "x...x...x...x...", p: "................" },
+            { name: "Lo-Fi Crackle", desc: "Vinyl noise.", k: "x...............", s: "....x.......x...", h: "................", p: "rrrrrrrrrrrrrrrr" }
+        ]
+    },
+    "EDM": {
+        bpm: 128, kit: "bigroom",
+        patterns: [
+            { name: "1-2-4-8 Build", desc: "Exponential acceleration.", k: "x...x...x.x.xxxx", s: "x...x...x.x.xxxx", h: "................", p: "................" },
+            { name: "Countdown", desc: "3, 2, 1, GO hits.", k: "x...x...x...x...", s: "................", h: "................", p: "x...x...x...x..." },
+            { name: "Pryda Snare", desc: "Big reverb snare.", k: "x...x...x.......", s: "................", h: "..x...x.........", p: "............x..." },
+            { name: "Triplet Stomps", desc: "Heavy triplets.", k: "x..x..x..x..x...", s: "x..x..x..x..x...", h: "................", p: "................" },
+            { name: "Supersaw Stabs", desc: "Chord stabs.", k: "x...x...x...x...", s: "................", h: "................", p: "x..x..x..x..x..." },
+            { name: "Rhythmic Gating", desc: "Trance gate.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Drop Siren", desc: "Rising siren.", k: "x...x...x...x...", s: "x...x...x...x...", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Hands Up", desc: "Clap-along.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "....x.......x..." },
+            { name: "Pitch Riser", desc: "Rising tone.", k: "................", s: "x.x.x.x.xxxxxxxx", h: "................", p: "x.x.x.x.xxxxxxxx" },
+            { name: "Jungle Terror", desc: "Metallic hits.", k: "x...x...x...x...", s: "................", h: "................", p: "x.xx.xx.xx.xx.x." },
+            { name: "Hardstyle Kick", desc: "Distorted kick.", k: "x...x...x...x...", s: "................", h: "................", p: "x...x...x...x..." },
+            { name: "Vocal Pre-drop", desc: "Vocal space.", k: "x...x...........", s: "................", h: "................", p: "................" },
+            { name: "Melbourne Bounce", desc: "Offbeat bass.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "..x...x...x...x." },
+            { name: "Snare & Clap", desc: "Layered hits.", k: "................", s: "x.x.x.x.x.x.x.x.", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Tom Build", desc: "Tom roll up.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.xxxxxxxx" },
+            { name: "Clock Ticking", desc: "Woodblock tick.", k: "................", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "White Noise", desc: "Wash out.", k: "................", s: "................", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Stomp & Clap", desc: "Stadium feel.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Ride Bell", desc: "Ding ding.", k: "x...x...x...x...", s: "....x.......x...", h: "x...x...x...x...", p: "................" },
+            { name: "Bass Growl", desc: "Aggressive bass.", k: "x...x...x...x...", s: "................", h: "................", p: "x.......x......." },
+            { name: "Mono Lead", desc: "Synth melody.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Marching Band", desc: "Snare roll.", k: "x...x...x...x...", s: "rrrrrrrrrrrrrrrr", h: "................", p: "................" },
+            { name: "Festival Trap", desc: "Switch to half.", k: "x.......x.......", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Final Riser", desc: "Fastest roll.", k: "x.x.x.x.xxxxxxxx", s: "x.x.x.x.xxxxxxxx", h: "x.x.x.x.xxxxxxxx", p: "................" }
+        ]
+    },
+    "Psytrance": {
+        bpm: 145, kit: "electronic",
+        patterns: [
+            { name: "Fast Kick Roll", desc: "Rolling bass kick.", k: "xxxxxxxxxxxxxxxx", s: "................", h: "................", p: "................" },
+            { name: "Triplet Breakdown", desc: "Switching to triplets.", k: "x..x..x..x..x...", s: "...x.....x......", h: "................", p: "................" },
+            { name: "Squelch FX", desc: "Alien noises.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "..x...x...x...x." },
+            { name: "Gated Vocal", desc: "Stutter vocal.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Acid Filter", desc: "303 acid line.", k: "x...x...x...x...", s: "................", h: "x.x.x.x.x.x.x.x.", p: ".x.x.x.x.x.x.x.x" },
+            { name: "Reverse Bass", desc: "K-B-B-B pattern.", k: "x...x...x...x...", s: "................", h: "..x...x...x...x.", p: ".xxx.xxx.xxx.xxx" },
+            { name: "Ping Pong", desc: "Delay bounce.", k: "x...x...x...x...", s: "....x.......x...", h: "................", p: "x.x...x.x...x..." },
+            { name: "Grid Glitch", desc: "Random hits.", k: "x.x.x...........", s: "......x.x.......", h: "..........x.x...", p: "..............xx" },
+            { name: "Frequency Shift", desc: "Descending tone.", k: "x...............", s: "x...............", h: "x...............", p: "x.x.x.x.x.x.x.x." },
+            { name: "Full On Roll", desc: "High energy.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Dark Psy", desc: "Fast BPM feel.", k: "x.x.x.x.x.x.x.x.", s: "................", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Tribal Fill", desc: "Percussion driven.", k: "x...x...x...x...", s: "................", h: "................", p: "x.xx.xx.xx.xx.x." },
+            { name: "Goa Melody", desc: "Eastern scale.", k: "x...x...x...x...", s: "................", h: "................", p: "x..x..x..x..x..." },
+            { name: "Bass Cut", desc: "High pass filter.", k: "................", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Crash Ride", desc: "Washing cymbals.", k: "x...x...x...x...", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Kick 16th", desc: "Machine gun kick.", k: "xxxxxxxxxxxxxxxx", s: "................", h: "................", p: "................" },
+            { name: "Hi-Tech Glitch", desc: "Computer noise.", k: "x..x..x..x..x...", s: ".x..x..x..x..x..", h: "................", p: "................" },
+            { name: "Progressive Pluck", desc: "Clean rhythm.", k: "x.......x.......", s: "....x.......x...", h: "..x...x...x...x.", p: "................" },
+            { name: "Snare Build", desc: "Simple ramp.", k: "................", s: "x.x.x.x.xxxxxxxx", h: "................", p: "................" },
+            { name: "Forest Psy", desc: "Organic texture.", k: "x...............", s: "................", h: "................", p: "x.x.xx.x.x.xx.x." },
+            { name: "Phase Bass", desc: "Swirling bass.", k: "x...x...x...x...", s: "................", h: "................", p: "xxxxxxxxxxxxxxxx" },
+            { name: "Talking Synth", desc: "Formant filter.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x...x.x.x...x." },
+            { name: "Shaman Drum", desc: "Deep tom.", k: "x...x...x...x...", s: "................", h: "................", p: "x...x...x...x..." }
+        ]
+    },
+    "Classic Trance": {
+        bpm: 138, kit: "909",
+        patterns: [
+            { name: "16th Snare Build", desc: "Classic 16th note snare roll.", k: "x...x...x...x...", s: "xxxxxxxxxxxxxxxx", h: "................", p: "................" },
+            { name: "Offbeat Bass", desc: "Standard offbeat trance bass.", k: "x...x...x...x...", s: "....x.......x...", h: "..x...x...x...x.", p: "..x...x...x...x." },
+            { name: "909 Hat Roll", desc: "Fast 909 open hats.", k: "x...x...x...x...", s: "................", h: "xxxxxxxxxxxxxxxx", p: "................" },
+            { name: "Trance Gate Fill", desc: "Gated synth rhythm.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Tom Descent", desc: "Classic tom roll down.", k: "x...x...x...x...", s: "................", h: "................", p: "xxxx.xxxx.xxxx.." },
+            { name: "Clap Build-up", desc: "Increasing clap density.", k: "x...x...x...x...", s: "....x.x.x.x.xxxx", h: "..x...x...x...x.", p: "................" },
+            { name: "Filtered Kick", desc: "Kick fading out.", k: "x.x.x.x.........", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Arp Pluck Intro", desc: "Plucky synth arpeggio.", k: "x...x...x...x...", s: "................", h: "................", p: "x..x..x..x..x..." },
+            { name: "Acid Line", desc: "303 style acid bass.", k: "x...x...x...x...", s: "................", h: "..x...x...x...x.", p: ".x.x.xx.x.x.xx.." },
+            { name: "Triplet Snare", desc: "Triplet feel snare roll.", k: "x...x...x...x...", s: "x..x..x..x..x...", h: "................", p: "................" },
+            { name: "Kick & Bass 16ths", desc: "Rolling 16th bassline.", k: "x...x...x...x...", s: "................", h: "................", p: ".xxxxxxxxxxxxxxx" },
+            { name: "Eurodance Snare", desc: "Snare on every beat.", k: "x...x...x...x...", s: "x...x...x...x...", h: "..x...x...x...x.", p: "................" },
+            { name: "White Noise Sweep", desc: "Noise wash.", k: "x...x...x...x...", s: "................", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Epic Chord Stab", desc: "Anthem chord hits.", k: "x...x...x...x...", s: "................", h: "................", p: "x.......x......." },
+            { name: "Offbeat Ride", desc: "Driving ride cymbal.", k: "x...x...x...x...", s: "....x.......x...", h: "....x.......x...", p: "................" },
+            { name: "Trance Bass Roll", desc: "Galloping bass.", k: "x...x...x...x...", s: "................", h: "................", p: "..xx..xx..xx..xx" },
+            { name: "Shaker Lift", desc: "Fast shakers.", k: "x...x...x...x...", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Double Kick Burst", desc: "Short kick rolls.", k: "xx..xx..xx..xx..", s: "....x.......x...", h: "................", p: "................" },
+            { name: "Minimal Kick Break", desc: "Stripped down beat.", k: "x.......x.......", s: "................", h: "..x...x...x...x.", p: "................" },
+            { name: "Percussion Tribal", desc: "Tribal tom rhythm.", k: "x...x...x...x...", s: "................", h: "................", p: "x.xx.x.xx.xx.xx." },
+            { name: "Snare Pitch Up", desc: "Rising tension snare.", k: "................", s: "xxxxxxxxxxxxxxxx", h: "................", p: "................" },
+            { name: "Vocal Stutter", desc: "Stuttered sample.", k: "x...x...x...x...", s: "................", h: "................", p: "x.x.x.x.x.x.x.x." },
+            { name: "Energy Build", desc: "All elements building.", k: "x.x.x.x.x.x.x.x.", s: "x.x.x.x.x.x.x.x.", h: "x.x.x.x.x.x.x.x.", p: "................" },
+            { name: "Fast Hats", desc: "32nd note feel hats.", k: "x...x...x...x...", s: "....x.......x...", h: "rrrrrrrrrrrrrrrr", p: "................" },
+            { name: "Snare & Tom Mix", desc: "Toms and snares.", k: "x...x...x...x...", s: "....xxxx....xxxx", h: "................", p: "........xxxx...." },
+            { name: "Trance Kick Roll", desc: "Fast kicks.", k: "xxxxxxxxxxxxxxxx", s: "................", h: "................", p: "................" },
+            { name: "The Anthem Fill", desc: "Massive drop prep.", k: "x...x...x.......", s: "x.x.x.x.xxxxxxxx", h: "................", p: "............x..." }
+        ]
+    }
+};
+
+// --- Audio Engine ---
+let audioCtx;
+let masterGainNode;
+let isPlaying = false;
+let currentStep = 0;
+let nextNoteTime = 0.0;
+let timerID;
+let tempo = 120;
+let currentKit = 'break';
+const scheduleAheadTime = 0.1;
+
+// Global MIDI Mapping
+let MIDI_MAP = {
+    'k': 36, // C2 (Bass Drum 1)
+    's': 38, // D2 (Acoustic Snare)
+    'h': 42, // F#2 (Closed Hi Hat)
+    'p': 60  // C4 (High Bongo / Perc)
+};
+
+const gridMap = { 'hat': 'row-hat', 'perc': 'row-perc', 'snare': 'row-snare', 'kick': 'row-kick' };
+const activePattern = { k:[], s:[], h:[], p:[] };
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGainNode = audioCtx.createGain();
+        masterGainNode.connect(audioCtx.destination);
+        
+        // Set initial volume from slider
+        const vol = document.getElementById('volSlider').value;
+        masterGainNode.gain.value = vol;
+    }
+    audioCtx.resume();
+}
+
+function initGrid() {
+    Object.keys(gridMap).forEach(inst => {
+        const row = document.getElementById(gridMap[inst]);
+        row.innerHTML = '';
+        for (let i = 0; i < 16; i++) {
+            const step = document.createElement('div');
+            step.classList.add('step');
+            step.dataset.idx = i;
+            step.dataset.inst = inst;
+            step.onclick = () => toggleStep(inst, i);
+            row.appendChild(step);
+        }
+    });
+}
+
+function toggleStep(inst, idx) {
+    const row = document.getElementById(gridMap[inst]);
+    const step = row.children[idx];
+    step.classList.toggle('active');
+    const key = inst === 'kick' ? 'k' : inst === 'snare' ? 's' : inst === 'hat' ? 'h' : 'p';
+    activePattern[key][idx] = step.classList.contains('active') ? 'x' : '.';
+}
+
+function loadPatternData(pData) {
+    ['k', 's', 'h', 'p'].forEach(key => {
+        activePattern[key] = pData[key].split('');
+        const inst = key === 'k' ? 'kick' : key === 's' ? 'snare' : key === 'h' ? 'hat' : 'perc';
+        const row = document.getElementById(gridMap[inst]);
+        Array.from(row.children).forEach((step, i) => {
+            step.classList.remove('active');
+            if (activePattern[key][i] !== '.') step.classList.add('active');
+        });
+    });
+}
+
+function playSound(inst, time, type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    // Connect to Master Gain instead of Destination
+    osc.connect(gain);
+    gain.connect(masterGainNode); 
+
+    if (inst === 'kick') {
+        osc.frequency.setValueAtTime(150, time);
+        osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+        gain.gain.setValueAtTime(1, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+        if (currentKit === 'urban' || currentKit === 'heavy') {
+            osc.frequency.exponentialRampToValueAtTime(40, time + 0.5); 
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.8);
+        }
+        osc.start(time);
+        osc.stop(time + 0.8);
+    } else if (inst === 'snare') {
+        const bufferSize = audioCtx.sampleRate * 0.5;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'highpass';
+        noiseFilter.frequency.value = 800;
+        const noiseGain = audioCtx.createGain();
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(masterGainNode); // Connect noise to master
+        const tone = audioCtx.createOscillator();
+        const toneGain = audioCtx.createGain();
+        tone.connect(toneGain);
+        toneGain.connect(masterGainNode); // Connect tone to master
+
+        if (currentKit === 'break' || currentKit === '909') {
+            noiseGain.gain.setValueAtTime(0.7, time);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+            tone.frequency.setValueAtTime(200, time);
+            toneGain.gain.setValueAtTime(0.5, time);
+            toneGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        } else {
+            noiseGain.gain.setValueAtTime(0.8, time);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+            tone.frequency.setValueAtTime(300, time);
+            tone.frequency.exponentialRampToValueAtTime(150, time + 0.1);
+            toneGain.gain.setValueAtTime(0.3, time);
+            toneGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        }
+        noise.start(time);
+        tone.start(time);
+        tone.stop(time + 0.2);
+    } else if (inst === 'hat') {
+        const bufferSize = audioCtx.sampleRate * 0.1;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 6000;
+        const nGain = audioCtx.createGain();
+        noise.connect(filter);
+        filter.connect(nGain);
+        nGain.connect(masterGainNode); // Connect to master
+        nGain.gain.setValueAtTime(0.3, time);
+        nGain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+        noise.start(time);
+    } else if (inst === 'perc') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(100, time);
+        if (currentKit === 'urban') osc.frequency.setValueAtTime(60, time);
+        osc.frequency.exponentialRampToValueAtTime(10, time + 0.3);
+        gain.gain.setValueAtTime(0.5, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+        osc.start(time);
+        osc.stop(time + 0.3);
+    }
+}
+
+function nextNote() {
+    const secondsPerBeat = 60.0 / tempo;
+    nextNoteTime += 0.25 * secondsPerBeat;
+    currentStep = (currentStep + 1) % 16;
+}
+
+function scheduleNote(stepNumber, time) {
+    requestAnimationFrame(() => {
+        document.querySelectorAll('.step.playing').forEach(s => s.classList.remove('playing'));
+        document.querySelectorAll(`.step[data-idx="${stepNumber}"]`).forEach(s => s.classList.add('playing'));
+    });
+    if (activePattern.k[stepNumber] !== '.') playSound('kick', time);
+    if (activePattern.s[stepNumber] === 'x') playSound('snare', time);
+    else if (activePattern.s[stepNumber] === 'r') {
+        playSound('snare', time);
+        playSound('snare', time + (0.125 * 60/tempo));
+    }
+    if (activePattern.h[stepNumber] === 'x') playSound('hat', time);
+    else if (activePattern.h[stepNumber] === 'r') {
+        playSound('hat', time);
+        playSound('hat', time + (0.125 * 60/tempo));
+    }
+    if (activePattern.p[stepNumber] !== '.') playSound('perc', time);
+}
+
+function scheduler() {
+    while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+        scheduleNote(currentStep, nextNoteTime);
+        nextNote();
+    }
+    timerID = requestAnimationFrame(scheduler);
+}
+
+// --- MIDI Encoder ---
+function exportMIDI() {
+    // 1. Setup MIDI Constants
+    const PPQ = 480; // Pulses Per Quarter note
+    const MPQN = Math.round(60000000 / tempo); // Microseconds Per Quarter Note
+    const stepTicks = PPQ / 4; // 16th note = 1/4 of a beat
+    
+    // 2. Collect Events
+    let events = [];
+    
+    // Tempo Meta Event at time 0
+    // FF 51 03 tttttt
+    events.push({
+        tick: 0,
+        data: [0xFF, 0x51, 0x03, (MPQN >> 16) & 0xFF, (MPQN >> 8) & 0xFF, MPQN & 0xFF]
+    });
+
+    for (let i = 0; i < 16; i++) {
+        const tickOn = i * stepTicks;
+        const tickOff = tickOn + (stepTicks - 10); // Note duration slightly less than step
+
+        // Kick
+        if (activePattern.k[i] !== '.') {
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.k, 100] }); // Note On
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.k, 0] });   // Note Off
+        }
+        // Snare
+        if (activePattern.s[i] === 'x') {
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.s, 100] });
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.s, 0] });
+        } else if (activePattern.s[i] === 'r') {
+            // Roll: two quick hits
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.s, 100] });
+            events.push({ tick: tickOn + (stepTicks/2)-5, data: [0x80, MIDI_MAP.s, 0] });
+            events.push({ tick: tickOn + (stepTicks/2), data: [0x90, MIDI_MAP.s, 100] });
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.s, 0] });
+        }
+        // Hat
+        if (activePattern.h[i] === 'x') {
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.h, 100] });
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.h, 0] });
+        } else if (activePattern.h[i] === 'r') {
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.h, 100] });
+            events.push({ tick: tickOn + (stepTicks/2)-5, data: [0x80, MIDI_MAP.h, 0] });
+            events.push({ tick: tickOn + (stepTicks/2), data: [0x90, MIDI_MAP.h, 100] });
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.h, 0] });
+        }
+        // Perc
+        if (activePattern.p[i] !== '.') {
+            events.push({ tick: tickOn, data: [0x90, MIDI_MAP.p, 100] });
+            events.push({ tick: tickOff, data: [0x80, MIDI_MAP.p, 0] });
+        }
+    }
+
+    // End of Track Event
+    events.push({
+        tick: 16 * stepTicks,
+        data: [0xFF, 0x2F, 0x00]
+    });
+
+    // 3. Sort Events by Time
+    events.sort((a, b) => a.tick - b.tick);
+
+    // 4. Encode to Bytes
+    let trackData = [];
+    let prevTick = 0;
+
+    events.forEach(e => {
+        let delta = e.tick - prevTick;
+        prevTick = e.tick;
+        
+        // Write Variable Length Quantity (delta)
+        let buffer = [];
+        let val = delta;
+        do {
+            let byte = val & 0x7F;
+            val >>= 7;
+            if (buffer.length > 0) byte |= 0x80;
+            buffer.unshift(byte);
+        } while (val > 0);
+        trackData.push(...buffer);
+        
+        // Write Event Data
+        trackData.push(...e.data);
+    });
+
+    // 5. Construct MIDI File (Header + Track)
+    // Header: MThd, Len=6, Fmt=0, Trks=1, PPQ
+    const header = [
+        0x4D, 0x54, 0x68, 0x64, // MThd
+        0x00, 0x00, 0x00, 0x06, // Length 6
+        0x00, 0x00, // Format 0
+        0x00, 0x01, // 1 Track
+        (PPQ >> 8) & 0xFF, PPQ & 0xFF // PPQ
+    ];
+
+    // Track Header: MTrk, Length
+    const trkHeader = [
+        0x4D, 0x54, 0x72, 0x6B, // MTrk
+        (trackData.length >> 24) & 0xFF,
+        (trackData.length >> 16) & 0xFF,
+        (trackData.length >> 8) & 0xFF,
+        trackData.length & 0xFF
+    ];
+
+    const rawData = new Uint8Array([...header, ...trkHeader, ...trackData]);
+    const blob = new Blob([rawData], { type: 'audio/midi' });
+    const url = URL.createObjectURL(blob);
+    
+    // Download Trigger
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drum_pattern_${tempo}bpm.mid`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+
+// --- UI Logic ---
+
+const genreSelect = document.getElementById('genreSelect');
+const patternSelect = document.getElementById('patternSelect');
+const bpmInput = document.getElementById('bpmInput');
+const descBox = document.getElementById('descBox');
+const volSlider = document.getElementById('volSlider');
+
+// --- MIDI Mapping Utilities ---
+const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_VALS = {
+    'C': 0, 'C#': 1, 'DB': 1, 'D': 2, 'D#': 3, 'EB': 3, 'E': 4,
+    'F': 5, 'F#': 6, 'GB': 6, 'G': 7, 'G#': 8, 'AB': 8, 'A': 9,
+    'A#': 10, 'BB': 10, 'B': 11
+};
+
+function midiToNoteName(midi) {
+    if (midi < 0 || midi > 127) return 'C4';
+    const octave = Math.floor(midi / 12) - 1;
+    const note = NOTES[midi % 12];
+    return `${note}${octave}`;
+}
+
+function noteNameToMidi(name) {
+    const match = name.trim().toUpperCase().match(/^([A-G][#B]?)(-?\d+)$/);
+    if (!match) return null;
+    const noteVal = NOTE_VALS[match[1]];
+    if (noteVal === undefined) return null;
+    const oct = parseInt(match[2], 10);
+    const midi = (oct + 1) * 12 + noteVal;
+    if (midi < 0 || midi > 127) return null;
+    return midi;
+}
+
+// Modal Logic
+const settingsModal = document.getElementById('settingsModal');
+document.getElementById('settingsBtn').addEventListener('click', () => {
+    document.getElementById('map-k').value = midiToNoteName(MIDI_MAP.k);
+    document.getElementById('map-s').value = midiToNoteName(MIDI_MAP.s);
+    document.getElementById('map-h').value = midiToNoteName(MIDI_MAP.h);
+    document.getElementById('map-p').value = midiToNoteName(MIDI_MAP.p);
+    settingsModal.style.display = 'block';
+});
+
+document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+    settingsModal.style.display = 'none';
+});
+
+window.addEventListener('click', (event) => {
+    if (event.target == settingsModal) {
+        settingsModal.style.display = 'none';
+    }
+});
+
+['k', 's', 'h', 'p'].forEach(inst => {
+    const input = document.getElementById(`map-${inst}`);
+    input.addEventListener('change', (e) => {
+        const midi = noteNameToMidi(e.target.value);
+        if (midi !== null) {
+            MIDI_MAP[inst] = midi;
+            e.target.value = midiToNoteName(midi); // Format nicely
+        } else {
+            e.target.value = midiToNoteName(MIDI_MAP[inst]); // Revert on error
+            alert("Invalid Note Name.\nPlease use format like 'C4', 'D#2', or 'Bb1'.");
+        }
+    });
+});
+
+// Populate Genres
+Object.keys(DATA).forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = g;
+    genreSelect.appendChild(opt);
+});
+
+function updateGenre() {
+    const genreName = genreSelect.value;
+    const genreData = DATA[genreName];
+    tempo = genreData.bpm;
+    bpmInput.value = tempo; // Update input
+    currentKit = genreData.kit;
+    patternSelect.innerHTML = '';
+    genreData.patterns.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = p.name;
+        patternSelect.appendChild(opt);
+    });
+    loadSelectedPattern();
+}
+
+function loadSelectedPattern() {
+    const genreName = genreSelect.value;
+    const pIdx = patternSelect.value;
+    const pattern = DATA[genreName].patterns[pIdx];
+    loadPatternData(pattern);
+    descBox.textContent = `[${pattern.name}] ${pattern.desc}`;
+}
+
+genreSelect.addEventListener('change', updateGenre);
+patternSelect.addEventListener('change', loadSelectedPattern);
+
+// Volume Control
+volSlider.addEventListener('input', function() {
+    if (masterGainNode) {
+        masterGainNode.gain.value = this.value;
+    }
+});
+
+// BPM Control
+bpmInput.addEventListener('change', function() {
+    let val = parseInt(this.value);
+    if (val < 40) val = 40;
+    if (val > 300) val = 300;
+    tempo = val;
+});
+
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', () => {
+    initAudio(); // Ensure audio starts on user gesture
+    if (isPlaying) {
+        isPlaying = false;
+        playBtn.textContent = "PLAY";
+        playBtn.classList.remove('playing');
+        window.cancelAnimationFrame(timerID);
+        document.querySelectorAll('.step.playing').forEach(s => s.classList.remove('playing'));
+    } else {
+        isPlaying = true;
+        playBtn.textContent = "STOP";
+        playBtn.classList.add('playing');
+        currentStep = 0;
+        nextNoteTime = audioCtx.currentTime + 0.1;
+        scheduler();
+    }
+});
+
+document.getElementById('midiBtn').addEventListener('click', exportMIDI);
+
+initGrid();
+updateGenre();
+
+</script>
+</body>
+</html>
