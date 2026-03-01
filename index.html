@@ -12,6 +12,7 @@
             --text-main: #eee;
             --text-dim: #888;
             --step-off: #2a2a35;
+            --step-off-alt: #202028; /* 4ステップごとの代替色を少し調整 */
             --step-on: #00ff9d;
             --step-play: #fff;
             --k-color: #ff0055;
@@ -187,8 +188,10 @@
             position: relative;
         }
 
-        /* Beat markers (slightly highlight the first step of each beat) */
-        .step:not(.active):nth-child(4n+1) { background-color: #323240; }
+        /* 4ステップごとの代替背景色 */
+        .step.alt-beat:not(.active) {
+            background-color: var(--step-off-alt);
+        }
 
         /* Active/Playing States */
         .step.active { opacity: 0.8; }
@@ -614,6 +617,12 @@ function initGrid() {
         for (let i = 0; i < 16; i++) {
             const step = document.createElement('div');
             step.classList.add('step');
+            
+            // 4ステップごとに 'alt-beat' クラスを付与して背景色を変える
+            if (Math.floor(i / 4) % 2 === 1) {
+                step.classList.add('alt-beat');
+            }
+
             step.dataset.idx = i;
             step.dataset.inst = inst;
             step.onclick = () => toggleStep(inst, i);
